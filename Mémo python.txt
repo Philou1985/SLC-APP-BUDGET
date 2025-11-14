@@ -1,0 +1,5 @@
+rendre executable : 
+C:\slc-budget-app> pyinstaller --onefile --windowed --name "Slc Budget" --icon "c:/slc-budget-app/icone.ico" main.py
+
+
+'pbkdf2:sha256:260000$CDN0FL0qwSA2AXB7$e598e1304b5eb8ef1b19590a7d3b1e402ba06005b594bbc0a35dbb15b38441e2'
