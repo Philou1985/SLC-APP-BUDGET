@@ -1376,3 +1376,118 @@ class RapportVariationPatrimoineWindow(tk.Toplevel):
         self.protocol("WM_DELETE_WINDOW", self.destroy)
         self.grab_set()
         self.wait_window(self)
+
+class TransactionSearchWindow(tk.Toplevel):
+    def __init__(self, parent, budget_data, category_filter=None):
+        super().__init__(parent.root)
+        self.transient(parent.root)
+        self.title("Historique des Transactions")
+        self.geometry("900x600")
+        
+        self.budget_data = budget_data
+        
+        # Récupérer toutes les catégories uniques pour le filtre
+        self.all_categories = set()
+        for data in self.budget_data.values():
+            if isinstance(data, dict): # Ignorer les clés spéciales
+                for t in data.get('transactions', []):
+                    if t.get('categorie'): self.all_categories.add(t.get('categorie'))
+        self.all_categories = sorted(list(self.all_categories))
+
+        # --- Zone de Filtres ---
+        filter_frame = ttk.LabelFrame(self, text="Filtres de Recherche", padding=10)
+        filter_frame.pack(fill=tk.X, padx=10, pady=5)
+
+        # Catégorie
+        ttk.Label(filter_frame, text="Catégorie :").pack(side=tk.LEFT)
+        self.cat_var = tk.StringVar(value=category_filter if category_filter else "")
+        self.cat_combo = ttk.Combobox(filter_frame, textvariable=self.cat_var, values=["(Toutes)"] + self.all_categories)
+        self.cat_combo.pack(side=tk.LEFT, padx=5)
+
+        # Dates
+        ttk.Label(filter_frame, text="Du :").pack(side=tk.LEFT, padx=(15, 0))
+        self.date_debut = ttk.Entry(filter_frame, width=12)
+        self.date_debut.insert(0, f"{date.today().year}-01-01") # Début année par défaut
+        self.date_debut.pack(side=tk.LEFT, padx=5)
+
+        ttk.Label(filter_frame, text="Au :").pack(side=tk.LEFT)
+        self.date_fin = ttk.Entry(filter_frame, width=12)
+        self.date_fin.insert(0, f"{date.today().year}-12-31") # Fin année par défaut
+        self.date_fin.pack(side=tk.LEFT, padx=5)
+
+        ttk.Button(filter_frame, text="Rechercher", command=self.perform_search).pack(side=tk.LEFT, padx=15)
+
+        # --- Tableau des résultats ---
+        tree_frame = ttk.Frame(self)
+        tree_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+        
+        cols = ('date', 'desc', 'cat', 'montant', 'compte')
+        self.tree = ttk.Treeview(tree_frame, columns=cols, show='headings')
+        self.tree.heading('date', text='Date'); self.tree.column('date', width=90, anchor=tk.CENTER)
+        self.tree.heading('desc', text='Description'); self.tree.column('desc', width=300)
+        self.tree.heading('cat', text='Catégorie'); self.tree.column('cat', width=150)
+        self.tree.heading('montant', text='Montant'); self.tree.column('montant', width=100, anchor=tk.E)
+        self.tree.heading('compte', text='Compte'); self.tree.column('compte', width=150)
+        
+        scrollbar = ttk.Scrollbar(tree_frame, orient=tk.VERTICAL, command=self.tree.yview)
+        self.tree.configure(yscroll=scrollbar.set)
+        self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        # --- Totaux ---
+        self.lbl_total = ttk.Label(self, text="Total : 0,00 €", font=("Arial", 11, "bold"))
+        self.lbl_total.pack(side=tk.BOTTOM, pady=10)
+
+        # Lancer la recherche immédiatement si une catégorie est fournie
+        if category_filter:
+            self.perform_search()
+
+    def perform_search(self):
+        # Nettoyer le tableau
+        for item in self.tree.get_children(): self.tree.delete(item)
+        
+        # Récupérer les critères
+        cat_filter = self.cat_var.get()
+        try:
+            d_start = datetime.strptime(self.date_debut.get(), "%Y-%m-%d").date()
+            d_end = datetime.strptime(self.date_fin.get(), "%Y-%m-%d").date()
+        except ValueError:
+            messagebox.showerror("Erreur", "Format de date invalide (AAAA-MM-JJ)")
+            return
+
+        total = 0.0
+        count = 0
+        
+        # Parcourir toutes les données (Optimisation: on pourrait utiliser SQL, mais iterer en mémoire est rapide ici)
+        all_transactions = []
+        for cle, data in self.budget_data.items():
+            if isinstance(data, dict) and not cle.startswith("_"):
+                all_transactions.extend(data.get('transactions', []))
+        
+        # Trier par date
+        all_transactions.sort(key=lambda x: x['date'])
+
+        for t in all_transactions:
+            try:
+                t_date = datetime.strptime(t['date'], "%Y-%m-%d").date()
+                
+                # Vérification Date
+                if not (d_start <= t_date <= d_end):
+                    continue
+                
+                # Vérification Catégorie
+                if cat_filter and cat_filter != "(Toutes)" and t.get('categorie') != cat_filter:
+                    continue
+
+                # Ajout
+                montant = t.get('montant', 0.0)
+                total += montant
+                count += 1
+                
+                self.tree.insert('', 'end', values=(
+                    t['date'], t['description'], t['categorie'], 
+                    format_nombre_fr(montant) + " €", t.get('compte_affecte')
+                ))
+            except ValueError: continue
+
+        self.lbl_total.config(text=f"Résultats : {count} transactions | Total sur la période : {format_nombre_fr(total)} €")

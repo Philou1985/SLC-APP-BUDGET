@@ -25,7 +25,7 @@ from ui_components import (ConflictStrategyDialog, TemplateManagerWindow,
                            ApplyTemplateDialog, VirementDialog, RecurrentTransactionManager,
                            DetailPrevisionnelWindow, DailyBudgetCalendarDialog,
                            HoldingEditDialog, PortfolioManagerWindow, RapportMensuelWindow,
-                           SelectFromListDialog, TransactionDialog, RapportVariationPatrimoineWindow)
+                           SelectFromListDialog, TransactionDialog, RapportVariationPatrimoineWindow, TransactionSearchWindow)
 from services import SqlDataManager, GraphManager
 from ai_service import CategorizationAI
 from market_service import MarketDataService
@@ -402,7 +402,9 @@ class PatrimoineApp:
         
         self.menu_categorie = tk.Menu(self.root, tearoff=0)
         self.menu_categorie.add_command(label="Solder / Ré-ouvrir la catégorie", command=self.solder_ou_reouvrir_categorie)
-        
+        self.menu_categorie.add_separator()
+        self.menu_categorie.add_command(label="Voir l'historique détaillé...", command=self.afficher_historique_categorie)
+
         def afficher_menu_categorie(event):
             item_id = self.budget_tree.identify_row(event.y)
             if item_id:
@@ -485,7 +487,6 @@ class PatrimoineApp:
         else:
             for tab in [self.tab_graph_depenses, self.tab_graph_recettes, self.tab_graph_evolution, self.tab_graph_vs]:
                 ttk.Label(tab, text="Matplotlib non disponible.").pack()
-
 
     def mettre_a_jour_vue_budget(self, resultats_projection=None):
         if not hasattr(self, 'budget_tree') or not hasattr(self, 'transactions_tree'): return
@@ -2398,7 +2399,7 @@ class PatrimoineApp:
         messagebox.showinfo(
             "À Propos de SLC Budget",
             "SLC Budget & Finances\n\n"
-            "Version 1.1.1 (Correctifs & Stabilité)\n"
+            "Version 1.1.2 (Correctifs & Stabilité)\n"
             "Année : 2025\n\n"
             "Créé par : Sébastien LE CORRE\n\n"
             "Une application pour suivre votre budget et votre patrimoine.",
@@ -2908,3 +2909,13 @@ class PatrimoineApp:
             db_path=self.data_manager.db_path,
             settings=settings
         )
+    def afficher_historique_categorie(self):
+            """Ouvre la fenêtre d'historique filtrée sur la catégorie sélectionnée."""
+            selection = self.budget_tree.selection()
+            if not selection: return
+        
+            # Récupérer le nom de la catégorie cliquée
+            nom_categorie = self.budget_tree.item(selection[0])['values'][0]
+        
+            # Ouvrir la fenêtre
+            TransactionSearchWindow(self, self.budget_data, category_filter=nom_categorie)
