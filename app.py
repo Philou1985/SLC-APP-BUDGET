@@ -69,8 +69,14 @@ class PatrimoineApp:
             self.root.geometry(f'{window_width}x{window_height}+{center_x}+{center_y}')
             
             self.base_dir = base_dir # On ajoute la ligne qui mémorise le répertoire
-            db_path = os.path.join(self.base_dir, "budget.db") # On corrige la création du chemin
-            self.data_manager = SqlDataManager(db_path)
+            
+            # 1. Définition des chemins
+            db_locale = os.path.join(self.base_dir, "budget.db")
+            # Remplace par ton chemin réseau réel (lecteur monté ou chemin UNC)
+            db_distant = r"\\192.168.1.24\DonneesPi\docker\nginx\html\Budget\budget.db"
+            self.db_path = self.selectionner_base(db_locale, db_distant)
+            
+            self.data_manager = SqlDataManager(self.db_path)
 
             settings = self.data_manager.charger_parametres()
             self.comptes, self.historique_patrimoine = self.data_manager.charger_donnees()
@@ -129,6 +135,50 @@ class PatrimoineApp:
             messagebox.showerror("Erreur Fatale", f"Erreur critique au démarrage:\n{e}")
             if hasattr(self, 'root') and self.root.winfo_exists():
                 self.root.destroy()
+
+    def selectionner_base(self, chemin_local, chemin_distant):
+        # On vérifie si le fichier distant est physiquement accessible
+        if os.path.exists(chemin_distant):
+            # Optionnel : Demander à l'utilisateur
+            reponse = messagebox.askyesno(
+                "Source de données", 
+                "La base de données sur le Raspberry Pi est accessible.\n\n"
+                "Voulez-vous utiliser la base DISTANTE ?\n"
+                "(Répondre 'Non' utilisera la base locale)"
+            )
+            if reponse:
+                print(f"INFO: Utilisation de la base distante : {chemin_distant}")
+                return chemin_distant
+                
+        # Si le chemin distant n'existe pas ou si l'utilisateur a dit Non
+        if not os.path.exists(chemin_distant):
+            messagebox.showwarning(
+                "Serveur inaccessible", 
+                "Le Raspberry Pi n'est pas accessible ou le dossier n'est pas monté.\n"
+                "L'application va basculer sur la base de données LOCALE."
+            )
+        
+        print(f"INFO: Utilisation de la base locale : {chemin_local}")
+        return chemin_local
+
+    def sauvegarder_copie_securite(self):
+        """Crée une copie locale de la base distante pour le mode secours."""
+        try:
+            if self.db_path != os.path.join(self.base_dir, "budget.db"):
+                destination = os.path.join(self.base_dir, "budget_backup_local.db")
+                shutil.copy2(self.db_path, destination)
+                print("INFO: Copie de sécurité locale mise à jour.")
+        except Exception as e:
+            print(f"AVERTISSEMENT: Impossible de créer la copie de sécurité : {e}")
+
+    def verifier_statut_connexion(self):
+        """Affiche un indicateur visuel de l'emplacement de la base."""
+        est_distant = "Raspberry Pi" if "budget.db" not in self.db_path or not self.db_path.startswith(self.base_dir) else "Local"
+        couleur = "#2ecc71" if est_distant == "Raspberry Pi" else "#f1c40f"
+        
+        # On ajoute un petit label en bas à droite de la fenêtre
+        self.status_label = ttk.Label(self.root, text=f" Source: {est_distant} ", background=couleur)
+        self.status_label.pack(side=tk.RIGHT, anchor=tk.SE, padx=5, pady=2)
 
     def changer_theme(self):
         if sv_ttk:
@@ -831,6 +881,7 @@ class PatrimoineApp:
         if reponse is True:
             self.sauvegarder_donnees()
             self.sauvegarder_budget_donnees()
+            self.sauvegarder_copie_securite()
             self._finalize_app()
             self.root.quit()
             self.root.destroy()
